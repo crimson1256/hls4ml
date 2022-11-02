@@ -121,8 +121,19 @@ class VivadoWriter(Writer):
                 brams_str  = ', \n'.join([indent + b.definition_cpp(as_reference=False) for b in model_brams])
 
                 newline = ''
-                newline += indent + inputs_str + ',\n'
-                newline += indent + outputs_str
+                
+                if(model_inputs[0].shape[-1] >= 64):
+                    input_channel = 1
+                else :
+                    input_channel = model_inputs[0].shape[-1]
+                
+                if(model_outputs[0].shape[-1] >= 64):
+                    output_channel = 1
+                else :
+                    output_channel = model_outputs[0].shape[-1]
+                
+                newline += indent + inputs_str + '['+str(input_channel)+'],\n'
+                newline += indent + outputs_str + '['+str(output_channel)+']'
                 if len(model_brams) > 0:
                     newline += ',\n' + brams_str
                 newline += '\n'
@@ -170,7 +181,13 @@ class VivadoWriter(Writer):
                         if var not in model_inputs and var not in model_outputs:
                             def_cpp = var.definition_cpp()
                             if def_cpp is not None:
-                                newline += '    ' + def_cpp + ';\n'
+                                #Judge the array size of output
+                                if(layer.get_output_variable().shape[-1] >= 64) :
+                                    layer_out_size = 1;
+                                else :
+                                    layer_out_size = layer.get_output_variable().shape[-1];
+                                
+                                newline += '    ' + def_cpp + '[' + str(layer_out_size) + '];\n'
                                 if var.pragma:
                                     newline += '    ' + self._make_array_pragma(var) + '\n'
                     func = layer.get_attr('function_cpp', None)
@@ -225,8 +242,19 @@ class VivadoWriter(Writer):
                 brams_str  = ', \n'.join([indent + b.definition_cpp(as_reference=False) for b in model_brams])
 
                 newline = ''
-                newline += indent + inputs_str + ',\n'
-                newline += indent + outputs_str
+                
+                if(model_inputs[0].shape[-1] >= 64):
+                    input_channel = 1
+                else :
+                    input_channel = model_inputs[0].shape[-1]
+                
+                if(model_outputs[0].shape[-1] >= 64):
+                    output_channel = 1
+                else :
+                    output_channel = model_outputs[0].shape[-1]
+                
+                newline += indent + inputs_str + '['+str(input_channel)+'],\n'
+                newline += indent + outputs_str + '['+str(output_channel)+']'
                 if len(model_brams) > 0:
                     newline += ',\n' + brams_str
                 newline += '\n'
@@ -363,6 +391,16 @@ class VivadoWriter(Writer):
         model_inputs = model.get_input_variables()
         model_outputs = model.get_output_variables()
         model_brams = [var for var in model.get_weight_variables() if var.storage.lower() == 'bram']
+        
+        if(model_inputs[0].shape[-1] >= 64):
+            input_channel = 1
+        else :
+            input_channel = model_inputs[0].shape[-1]
+        
+        if(model_outputs[0].shape[-1] >= 64):
+            output_channel = 1
+        else :
+            output_channel = model_outputs[0].shape[-1]
 
         for line in f.readlines():
             indent = ' ' * (len(line) - len(line.lstrip(' ')))
@@ -378,18 +416,18 @@ class VivadoWriter(Writer):
                 newline = line
                 offset = 0
                 for inp in model_inputs:
-                    newline += '      ' + inp.definition_cpp() + ';\n'
-                    newline += '      nnet::copy_data_ss<float, {}, {}, {}>(in, {});\n'.format(inp.type.name, offset, inp.size_cpp(), inp.name)
+                    newline += '      ' + inp.definition_cpp() +'['+str(input_channel)+']' + ';\n'
+                    newline += '      nnet::copy_data_switch<float, {}, {}, {}, {}>(in, {});\n'.format(inp.type.name, offset, inp.size_cpp(), str(input_channel), inp.name)
                     offset += inp.size()
                 for out in model_outputs:
-                    newline += '      ' + out.definition_cpp() + ';\n'
+                    newline += '      ' + out.definition_cpp() +'['+str(output_channel)+']' + ';\n'
             elif '//hls-fpga-machine-learning insert zero' in line:
                 newline = line
                 for inp in model_inputs:
-                    newline += '    ' + inp.definition_cpp() + ';\n'
-                    newline += '    nnet::fill_zero_ss<{}, {}>({});\n'.format(inp.type.name, inp.size_cpp(), inp.name)
+                    newline += '    ' + inp.definition_cpp() +'['+str(input_channel)+']' + ';\n'
+                    newline += '    nnet::fill_zero_switch<{}, {}, {}>({});\n'.format(inp.type.name, inp.size_cpp(), str(input_channel), inp.name)
                 for out in model_outputs:
-                    newline += '    ' + out.definition_cpp() + ';\n'
+                    newline += '    ' + out.definition_cpp() +'['+str(output_channel)+']' + ';\n'
             elif '//hls-fpga-machine-learning insert top-level-function' in line:
                 newline = line
 
@@ -413,11 +451,11 @@ class VivadoWriter(Writer):
             elif '//hls-fpga-machine-learning insert tb-output' in line:
                 newline = line
                 for out in model_outputs:
-                    newline += indent + 'nnet::print_result_ss<{}, {}>({}, fout);\n'.format(out.type.name, out.size_cpp(), out.name) #TODO enable this
+                    newline += indent + 'nnet::print_result_switch<{}, {}, {}>({}, fout);\n'.format(out.type.name, out.size_cpp(), str(output_channel), out.name) #TODO enable this
             elif '//hls-fpga-machine-learning insert output' in line or '//hls-fpga-machine-learning insert quantized' in line:
                 newline = line
                 for out in model_outputs:
-                    newline += indent + 'nnet::print_result_ss<{}, {}>({}, std::cout, true);\n'.format(out.type.name, out.size_cpp(), out.name)
+                    newline += indent + 'nnet::print_result_switch<{}, {}, {}>({}, std::cout, true);\n'.format(out.type.name, out.size_cpp(), str(output_channel), out.name)
             else:
                 newline = line
             fout.write(newline)
@@ -438,7 +476,15 @@ class VivadoWriter(Writer):
         model_brams = [var for var in model.get_weight_variables() if var.storage.lower() == 'bram']
 
         indent = '    '
-
+        if(model_inputs[0].shape[-1] >= 64):
+            input_channel = 1
+        else :
+            input_channel = model_inputs[0].shape[-1]
+        
+        if(model_outputs[0].shape[-1] >= 64):
+            output_channel = 1
+        else :
+            output_channel = model_outputs[0].shape[-1]
         for line in f.readlines():
 
             if 'MYPROJECT' in line:
@@ -461,12 +507,12 @@ class VivadoWriter(Writer):
                 dtype = line.split('#', 1)[1].strip()
                 newline = ''
                 for i in model_inputs:
-                    newline += indent + '{var};\n'.format(var=i.definition_cpp(name_suffix='_ap'))
-                    newline += indent + 'nnet::convert_data_ss<{}, {}, {}>({}, {}_ap);\n'.format(dtype, i.type.name, i.size_cpp(), i.name, i.name)
+                    newline += indent + '{var}[{in_chan}];\n'.format(var=i.definition_cpp(name_suffix='_ap'), in_chan=input_channel)
+                    newline += indent + 'nnet::convert_data_switch<{}, {}, {}, {}>({}, {}_ap);\n'.format(dtype, i.type.name, i.size_cpp(), input_channel, i.name, i.name)
                 newline += '\n'
 
                 for o in model_outputs:
-                    newline += indent + '{var};\n'.format(var=o.definition_cpp(name_suffix='_ap'))
+                    newline += indent + '{var}[{out_chan}];\n'.format(var=o.definition_cpp(name_suffix='_ap'), out_chan=output_channel)
 
                 newline += '\n'
 
@@ -483,7 +529,7 @@ class VivadoWriter(Writer):
                 newline += '\n'
 
                 for o in model_outputs:
-                    newline += indent + 'nnet::convert_data_ss<{}, {}, {}>({}_ap, {});\n'.format(o.type.name, dtype, o.size_cpp(), o.name, o.name)
+                    newline += indent + 'nnet::convert_data_switch<{}, {}, {}, {}>({}_ap, {});\n'.format(o.type.name, dtype, o.size_cpp(), output_channel, o.name, o.name)
             elif '//hls-fpga-machine-learning insert trace_outputs' in line:
                 newline = ''
                 for layer in model.get_layers():

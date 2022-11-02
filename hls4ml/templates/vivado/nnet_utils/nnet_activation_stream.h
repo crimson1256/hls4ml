@@ -51,16 +51,50 @@ void linear(hls::stream<data_T> &data, hls::stream<res_T> &res) {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//for switch
 template<class data_T, class res_T, typename CONFIG_T>
-void linear_ss(hls::stream<data_T> &data, hls::stream<res_T> &res) {
+void linear_single(hls::stream<data_T> data[1], hls::stream<res_T> res[1]) {
     LinearLoop: for (int i = 0; i < CONFIG_T::n_in; i++) {
         #pragma HLS PIPELINE
 
-        data_T in_data = data.read();
+        data_T in_data = data[0].read();
         res_T out_data = in_data;
-        res.write(out_data);
+        res[0].write(out_data);
     }
 }
+
+template<class data_T, class res_T, typename CONFIG_T>
+void linear_array(hls::stream<data_T> data[CONFIG_T::n_chan], hls::stream<res_T> res[CONFIG_T::n_chan]) {
+    LinearLoop: for (int i = 0; i < CONFIG_T::n_in/CONFIG_T::n_chan; i++) {
+        #pragma HLS PIPELINE
+
+        data_T in_data[CONFIG_T::n_chan];
+        #pragma HLS ARRAY_PARTITION variable=in_data complete
+        for(int j = 0; j < CONFIG_T::n_chan; j++) {
+            #pragma HLS UNROLL
+            in_data[j] = data[j].read();
+        }
+        for (int j = 0; j < CONFIG_T::n_chan; j++) {
+            #pragma HLS UNROLL
+            res_T out_data = in_data[j];
+            res[j].write(out_data);
+        }
+    }
+}
+
+template<class data_T, class res_T, typename CONFIG_T>
+void linear_switch(hls::stream<data_T> data[CONFIG_T::data_transfer_out], hls::stream<res_T> res[CONFIG_T::data_transfer_out]) {
+    #pragma HLS inline region
+    if(CONFIG_T::data_transfer_out == 1){
+        linear_single<data_T, res_T, CONFIG_T>(data, res);
+    }else {
+        linear_array<data_T, res_T, CONFIG_T>(data, res);
+    }
+
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 
 // *************************************************
@@ -99,6 +133,61 @@ void relu_ss(hls::stream<data_T> &data, hls::stream<res_T> &res) {
         res.write(out_data);
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//for switch
+template<class data_T, class res_T, typename CONFIG_T>
+void relu_single(hls::stream<data_T> data[1], hls::stream<res_T> res[1]) {
+    for (int i = 0; i < CONFIG_T::n_in; i++) {
+         #pragma HLS PIPELINE
+
+        data_T in_data = data[0].read();
+        res_T out_data;
+        
+        if (in_data > 0) out_data = in_data;
+        else out_data = 0;
+        
+        res[0].write(out_data);
+    }
+    std::cout<<"sss"<<std::endl;
+}
+
+template<class data_T, class res_T, typename CONFIG_T>
+void relu_array(hls::stream<data_T> data[CONFIG_T::n_chan], hls::stream<res_T> res[CONFIG_T::n_chan]) {
+    ReLUActLoop: for (int i = 0; i < CONFIG_T::n_in / CONFIG_T::n_chan; i++) {
+        #pragma HLS PIPELINE
+        data_T in_data[CONFIG_T::n_chan];
+        #pragma HLS ARRAY_PARTITION variable=in_data complete
+
+        for (int j = 0; j < CONFIG_T::n_chan; j++) {
+            #pragma HLS UNROLL
+            in_data[j] = data[j].read();
+        }
+        res_T out_data;
+
+        ReLUPackLoop: for (int j = 0; j < CONFIG_T::n_chan; j++) {
+            #pragma HLS UNROLL
+            if (in_data[j] > 0) out_data = in_data[j];
+            else out_data = 0;
+            res[j].write(out_data);
+        }
+    }
+}
+
+
+template<class data_T, class res_T, typename CONFIG_T>
+void relu_switch(
+    hls::stream<data_T> data[CONFIG_T::data_transfer_out],
+    hls::stream<res_T>  res[CONFIG_T::data_transfer_out]
+) {
+    #pragma HLS inline region
+    if(CONFIG_T::data_transfer_out == 1){
+        relu_single<data_T, res_T, CONFIG_T>(data, res);
+    }else {
+        relu_array<data_T, res_T, CONFIG_T>(data, res);
+    }
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // *************************************************
 //       Sigmoid Activation
@@ -630,6 +719,58 @@ void leaky_relu_ss(hls::stream<data_T> &data,data_T alpha, hls::stream<res_T> &r
     }
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//for switch
+template<class data_T, class res_T, typename CONFIG_T>
+void leaky_relu_single(hls::stream<data_T> data[1],data_T alpha, hls::stream<res_T> res[1]) {
+    LeakyReLUActLoop: for (int i = 0; i < CONFIG_T::n_in; i++) {
+        #pragma HLS PIPELINE
+
+        data_T in_data = data[0].read();
+        res_T out_data;
+
+        if (in_data > 0) out_data = in_data;
+        else out_data = alpha * in_data;
+        res[0].write(out_data);
+    }
+}
+
+template<class data_T, class res_T, typename CONFIG_T>
+void leaky_relu_array(hls::stream<data_T> data[CONFIG_T::n_chan], data_T alpha, hls::stream<res_T> res[CONFIG_T::n_chan]) {
+
+    data_T in_data[CONFIG_T::n_chan];
+    #pragma HLS ARRAY_RESHAPE variable=in_data complete
+
+    LeakyReLUActLoop: for (int i = 0; i < CONFIG_T::n_in / CONFIG_T::n_chan; i++) {
+        #pragma HLS PIPELINE
+        
+        res_T out_data;
+        
+        for (int j = 0; j < CONFIG_T::n_chan; j++) {
+            #pragma HLS UNROLL
+            in_data[j] = data[j].read();
+        }
+        
+        LeakyReLUPackLoop: for (int j = 0; j < CONFIG_T::n_chan; j++) {
+            #pragma HLS UNROLL
+            if (in_data[j] > 0) out_data = in_data[j];
+            else out_data = alpha * in_data[j];
+            res[j].write(out_data);
+        }
+    }
+}
+
+template<class data_T, class res_T, typename CONFIG_T>
+void leaky_relu_switch(hls::stream<data_T> data[CONFIG_T::data_transfer_out], data_T alpha, hls::stream<res_T> res[CONFIG_T::data_transfer_out]) {
+    #pragma HLS inline region
+    if(CONFIG_T::data_transfer_out == 1){
+        leaky_relu_single<data_T, res_T, CONFIG_T>(data, alpha, res);
+    }else {
+        leaky_relu_array<data_T, res_T, CONFIG_T>(data, alpha, res);
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // *************************************************
 //       Thresholded RELU Activation
 // *************************************************

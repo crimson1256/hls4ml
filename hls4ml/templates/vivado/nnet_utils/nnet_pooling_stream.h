@@ -682,6 +682,190 @@ void pooling2d_cl_ss(
 	}
 }
 
-	
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////	
+// for switch
+template<class data_T, class res_T, typename CONFIG_T>
+  void pooling_single(
+            hls::stream<data_T> data[1],
+            hls::stream<res_T>  res[1]
+        ) { 
+
+      //decide the restriction
+      int cal_height,cal_width;
+      if(CONFIG_T::in_height%2 == 0)cal_height = CONFIG_T::in_height;
+      else cal_height = CONFIG_T::in_height-1;
+      if(CONFIG_T::in_width%2 == 0)cal_width = CONFIG_T::in_width;
+      else cal_width = CONFIG_T::in_width-1;
+      
+      //start to calculate
+      data_T memory1[CONFIG_T::in_width][CONFIG_T::n_filt];
+      #pragma HLS ARRAY_PARTITION variable=memory1 cyclic factor=2 
+      data_T memory2[CONFIG_T::n_filt];
+      data_T memory3[CONFIG_T::n_filt];
+      data_T tmpt,tmpt2,tmpt3,tmpt4,tmpt5;
+      data_T pool[4];
+      #pragma HLS ARRAY_PARTITION variable=pool complete
+      
+      int cal_height2 = cal_height/2;
+      for(int i=0; i<cal_height2; i++){
+          //read data
+          for(int j=0; j<cal_width; j++){
+            for(int k=0; k<CONFIG_T::n_chan; k++){
+                #pragma HLS PIPELINE
+                tmpt = data[0].read();
+                memory1[j][k] = tmpt;
+            }
+          }
+          for(int k=0; k<CONFIG_T::n_chan; k++){
+                if(CONFIG_T::in_width > cal_width){
+                    #pragma HLS PIPELINE
+                    tmpt = data[0].read();
+                }
+          }
+          //decide which is the biggest
+          int cal_width2 = cal_width/2;
+          for(int j=0; j<cal_width2; j++){
+            for(int k=0; k<CONFIG_T::n_chan; k++){
+                #pragma HLS PIPELINE
+                tmpt2 = data[0].read();
+                memory2[k] = tmpt2;
+            }
+            for(int k=0; k<CONFIG_T::n_chan; k++){
+                #pragma HLS PIPELINE
+                tmpt3 = data[0].read();
+                memory3[k] = tmpt3;
+            }
+            for(int k=0; k<CONFIG_T::n_chan; k++){
+                #pragma HLS PIPELINE
+                pool[0] = memory1[2*j][k];
+                pool[1] = memory1[2*j+1][k];
+                pool[2] = memory2[k];
+                pool[3] = memory3[k];
+
+                res_T max = pool[0];
+                for(int m=1; m<4; m++){
+                    #pragma HLS UNROLL
+                    if(pool[m] > max)max = pool[m];
+                }
+                res[0].write(max);
+            }
+          }
+          for(int k=0; k<CONFIG_T::n_chan; k++){
+            if(CONFIG_T::in_width > cal_width){
+                #pragma HLS PIPELINE
+                tmpt4 = data[0].read();
+            }
+          }
+      }
+      for(int j=0; j<CONFIG_T::in_width; j++){
+        for(int k=0; k<CONFIG_T::n_chan; k++){
+            if(CONFIG_T::in_height > cal_height){
+                #pragma HLS PIPELINE
+                tmpt5 = data[0].read();
+            }
+        }
+      }
+  }
+
+
+template<class data_T, class res_T, typename CONFIG_T>
+  void pooling_array(
+            hls::stream<data_T> data[CONFIG_T::n_chan],
+            hls::stream<res_T>  res[CONFIG_T::n_chan]
+        ) {
+
+      //decide the restriction
+      int cal_height,cal_width;
+      if(CONFIG_T::in_height%2 == 0)cal_height = CONFIG_T::in_height;
+      else cal_height = CONFIG_T::in_height-1;
+      if(CONFIG_T::in_width%2 == 0)cal_width = CONFIG_T::in_width;
+      else cal_width = CONFIG_T::in_width-1;
+      
+      //start to calculate
+      data_T memory1[CONFIG_T::in_width][CONFIG_T::n_filt];
+      #pragma HLS ARRAY_PARTITION variable=memory1 cyclic factor=2 dim=1
+      data_T memory2[CONFIG_T::n_filt];
+      data_T memory3[CONFIG_T::n_filt];
+      data_T tmpt,tmpt2,tmpt3,tmpt4,tmpt5;
+      data_T pool[4];
+      #pragma HLS ARRAY_PARTITION variable=pool complete
+
+      int cal_height2 = cal_height/2;
+      for(int i=0; i<cal_height2; i++){
+          //read data
+          for(int j=0; j<cal_width; j++){
+            for(int k=0; k<CONFIG_T::n_chan; k++){
+                #pragma HLS UNROLL 
+                tmpt = data[k].read();
+                memory1[j][k] = tmpt;
+            }
+          }
+          for(int k=0; k<CONFIG_T::n_chan; k++){
+                #pragma HLS UNROLL 
+                if(CONFIG_T::in_width > cal_width){
+                    tmpt = data[k].read();
+                }
+          }
+          //decide which is the biggest
+          int cal_width2 = cal_width/2;
+          for(int j=0; j<cal_width2; j++){
+            for(int k=0; k<CONFIG_T::n_chan; k++){
+                #pragma HLS UNROLL
+                tmpt2 = data[k].read();
+                memory2[k] = tmpt2;
+            }
+            for(int k=0; k<CONFIG_T::n_chan; k++){
+                #pragma HLS UNROLL
+                tmpt3 = data[k].read();
+                memory3[k] = tmpt3;
+            }
+            for(int k=0; k<CONFIG_T::n_chan; k++){
+                #pragma HLS UNROLL
+                pool[0] = memory1[2*j][k];
+                pool[1] = memory1[2*j+1][k];
+                pool[2] = memory2[k];
+                pool[3] = memory3[k];
+
+                res_T max = pool[0];
+                for(int m=1; m<4; m++){
+                    #pragma HLS UNROLL
+                    if(pool[m] > max)max = pool[m];
+                }
+                res[k].write(max);
+            }
+          }
+          for(int k=0; k<CONFIG_T::n_chan; k++){
+            #pragma HLS UNROLL
+            if(CONFIG_T::in_width > cal_width){
+                tmpt4 = data[k].read();
+            }
+          }
+      }
+      for(int j=0; j<CONFIG_T::in_width; j++){
+        for(int k=0; k<CONFIG_T::n_chan; k++){
+            #pragma HLS UNROLL
+            if(CONFIG_T::in_height > cal_height){
+                tmpt5 = data[k].read();
+            }
+        }
+      }
+  }
+  
+template<class data_T, class res_T, typename CONFIG_T>
+  void pooling2d_cl_switch(
+            hls::stream<data_T> data[CONFIG_T::data_transfer_out],
+            hls::stream<res_T>  res[CONFIG_T::data_transfer_out]
+) { 
+    #pragma HLS inline region
+    if(CONFIG_T::data_transfer_out == 1){
+        pooling_single<data_T, res_T, CONFIG_T>(data, res);
+    }else {
+        pooling_array<data_T, res_T, CONFIG_T>(data, res);
+    }
+}
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 }
 #endif

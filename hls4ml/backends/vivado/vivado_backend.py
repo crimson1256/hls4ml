@@ -26,6 +26,21 @@ class VivadoBackend(FPGABackend):
             SimpleRNN: [Attribute('recurrent_reuse_factor', default=1), Attribute('static', value_type=bool, default=True)],
             LSTM: [Attribute('recurrent_reuse_factor', default=1), Attribute('static', value_type=bool, default=True)],
             GRU: [Attribute('recurrent_reuse_factor', default=1), Attribute('static', value_type=bool, default=True)],
+            
+            # ---------------------------------------------------------------------------------------------
+            # 2022 9 23
+            # for array single conversion
+            # n_chan_in is euqal to n_chan_out for these layers
+            BatchNormalization: [Attribute('data_transfer_out', default=1)],
+            Activation: [Attribute('data_transfer_out', default=1), Attribute('n_chan', default=1)],
+            ZeroPadding2D: [Attribute('data_transfer_out', default=1)],
+            Pooling2D: [Attribute('data_transfer_out', default=1)],
+            Resize: [Attribute('data_transfer_out', default=1)],
+            
+            # n_chan_in is not euqal to n_chan_out for these layers
+            Conv2D: [Attribute('data_transfer_in', default=1),Attribute('data_transfer_out', default=1)]
+            # ---------------------------------------------------------------------------------------------
+            
         }
         self.attribute_map.update(extended_attrs)
 
@@ -56,8 +71,8 @@ class VivadoBackend(FPGABackend):
         optimization_flow = register_flow('optimize', optimization_passes, requires=[init_flow], backend=self.name)
 
         vivado_types = [
-            'vivado:transform_types',
             'vivado:register_bram_weights',
+            'vivado:transform_types',
             'vivado:generate_conv_streaming_instructions',
             'vivado:apply_resource_strategy',
         ]
@@ -191,6 +206,28 @@ class VivadoBackend(FPGABackend):
             layer.set_attr('strategy', 'latency')
         
         layer.set_attr('implementation', layer.model.config.get_conv_implementation(layer).lower())
+        
+        # ---------------------------------------------------------------------------------------------
+        # 2022 9 23
+        # for array single conversion
+        
+        inp = layer.get_input_variable()
+        in_shape = inp.shape
+        in_n_chan = in_shape[-1]
+        
+        out = layer.get_output_variable()
+        out_shape = out.shape
+        out_n_chan = out_shape[-1]
+        
+        # Set the data_transfer_out attribute for each layer
+        # n_chan < 64 -> array, data_transfer_out remains
+        # n_chan >= 64 -> single, data_transfer_out=1
+        
+        data_transfer_in = 1 if in_n_chan >= 64 else in_n_chan
+        data_transfer_out = 1 if out_n_chan >= 64 else out_n_chan 
+        layer.set_attr('data_transfer_in', data_transfer_in)        
+        layer.set_attr('data_transfer_out', data_transfer_out)
+        # ---------------------------------------------------------------------------------------------
 
     @layer_optimizer(SeparableConv2D)
     def init_sepconv2d(self, layer):
@@ -220,6 +257,23 @@ class VivadoBackend(FPGABackend):
             layer.set_attr('table_t', NamedType(name=layer.name + '_table_t', precision=FixedPrecisionType(width=18, integer=8)))
         if 'table_size' not in layer.attributes:
             layer.set_attr('table_size', 1024)
+        
+        # ---------------------------------------------------------------------------------------------
+        # 2022 9 23
+        # for array single conversion 
+        
+        inp = layer.get_input_variable()
+        shape = inp.shape
+        n_chan = shape[-1]
+        
+        # Set the data_transfer_out attribute for each layer
+        # n_chan < 64 -> array, data_transfer_out remains
+        # n_chan >= 64 -> single, data_transfer_out=1
+        
+        data_transfer_out = 1 if n_chan >= 64 else n_chan        
+        layer.set_attr('data_transfer_out', data_transfer_out)
+        layer.set_attr('n_chan', n_chan)       
+        # ---------------------------------------------------------------------------------------------
 
     @layer_optimizer(Softmax)
     def init_softmax(self, layer):
@@ -316,3 +370,58 @@ class VivadoBackend(FPGABackend):
     @layer_optimizer(GarNetStack)
     def init_garnet_stack(self, layer):
         self.init_garnet(layer)
+    
+    # --------------------------------------------------------------------
+    # 2022 9 23
+    # for array single conversion
+    @layer_optimizer(BatchNormalization)
+    def init_batchnorm(self, layer):
+        inp = layer.get_input_variable()
+        shape = inp.shape
+        n_chan = shape[-1]
+        
+        # Set the data_transfer_out attribute for each layer
+        # n_chan < 64 -> array, data_transfer_out remains
+        # n_chan >= 64 -> single, data_transfer_out=1
+        
+        data_transfer_out = 1 if n_chan >= 64 else n_chan        
+        layer.set_attr('data_transfer_out', data_transfer_out)
+        
+    @layer_optimizer(ZeroPadding2D)
+    def init_zeropad2d(self, layer):
+        inp = layer.get_input_variable()
+        shape = inp.shape
+        n_chan = shape[-1]
+        
+        # Set the data_transfer_out attribute for each layer
+        # n_chan < 64 -> array, data_transfer_out remains
+        # n_chan >= 64 -> single, data_transfer_out=1
+        
+        data_transfer_out = 1 if n_chan >= 64 else n_chan        
+        layer.set_attr('data_transfer_out', data_transfer_out)
+        
+    @layer_optimizer(Pooling2D)
+    def init_pool2d(self, layer):
+        inp = layer.get_input_variable()
+        shape = inp.shape
+        n_chan = shape[-1]
+        
+        # Set the data_transfer_out attribute for each layer
+        # n_chan < 64 -> array, data_transfer_out remains
+        # n_chan >= 64 -> single, data_transfer_out=1
+        
+        data_transfer_out = 1 if n_chan >= 64 else n_chan        
+        layer.set_attr('data_transfer_out', data_transfer_out)
+        
+    @layer_optimizer(Resize)
+    def init_resize(self, layer):
+        inp = layer.get_input_variable()
+        shape = inp.shape
+        n_chan = shape[-1]
+        
+        # Set the data_transfer_out attribute for each layer
+        # n_chan < 64 -> array, data_transfer_out remains
+        # n_chan >= 64 -> single, data_transfer_out=1
+        
+        data_transfer_out = 1 if n_chan >= 64 else n_chan        
+        layer.set_attr('data_transfer_out', data_transfer_out)

@@ -325,6 +325,44 @@ void copy_data(std::vector<src_T> src, hls::stream<dst_T> &dst) {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//for switch
+template<class src_T, class dst_T, size_t OFFSET, size_t SIZE, size_t SIZE2>
+void copy_data_single(std::vector<src_T> src, hls::stream<dst_T> dst[1]) {
+    typename std::vector<src_T>::const_iterator in_begin = src.cbegin() + OFFSET;
+    typename std::vector<src_T>::const_iterator in_end = in_begin + SIZE;
+
+    for (typename std::vector<src_T>::const_iterator i = in_begin; i != in_end; ++i) {
+        dst_T dst_pack = dst_T(*i);
+        dst[0].write(dst_pack);
+    }
+}
+
+template<class src_T, class dst_T, size_t OFFSET, size_t SIZE, size_t SIZE2>
+void copy_data_array(std::vector<src_T> src, hls::stream<dst_T> dst[SIZE2]) {
+    typename std::vector<src_T>::const_iterator in_begin = src.cbegin() + OFFSET;
+    typename std::vector<src_T>::const_iterator in_end = in_begin + SIZE;
+
+    int count = 0;
+    for (typename std::vector<src_T>::const_iterator i = in_begin; i != in_end; ++i) {
+        dst_T dst_pack = dst_T(*i);
+        dst[count].write(dst_pack);
+        if(count<SIZE2-1)count++;
+        else count=0;
+    }
+}
+
+template<class src_T, class dst_T, size_t OFFSET, size_t SIZE, size_t SIZE2>
+void copy_data_switch(std::vector<src_T> src, hls::stream<dst_T> dst[SIZE2]) {
+    if(SIZE2==1){
+        copy_data_single<src_T, dst_T, OFFSET, SIZE, SIZE2>(src, dst);
+    }else {
+        copy_data_array <src_T, dst_T, OFFSET, SIZE, SIZE2>(src, dst);
+    }
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
 template<class src_T, class dst_T, size_t OFFSET, size_t SIZE>
 void copy_data_ss(std::vector<src_T> src, hls::stream<dst_T> &dst) {
     typename std::vector<src_T>::const_iterator in_begin = src.cbegin() + OFFSET;
@@ -361,14 +399,6 @@ void print_result(res_T result[SIZE], std::ostream &out, bool keep = false) {
 }
 
 template<class res_T, size_t SIZE>
-void print_result_ss(res_T result[SIZE], std::ostream &out, bool keep = false) {
-    for(int i = 0; i < SIZE; i++) {
-        out << result[i] << " ";
-    }
-    out << std::endl;
-}
-
-template<class res_T, size_t SIZE>
 void print_result(hls::stream<res_T> &result, std::ostream &out, bool keep = false) {
     for(int i = 0; i < SIZE / res_T::size; i++) {
         res_T res_pack = result.read();
@@ -390,6 +420,40 @@ void print_result_ss(hls::stream<res_T> &result, std::ostream &out, bool keep = 
 		if(i == 255)out << std::endl;
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//for switch
+template<class res_T, size_t SIZE1, size_t SIZE2>
+void print_result_single(hls::stream<res_T> result[1], std::ostream &out, bool keep = false) {
+    for(int i = 0; i < SIZE1; i++) {
+        res_T res_pack = result[0].read();
+        out << res_pack << " ";
+        if (keep) result[0].write(res_pack);
+    }
+    out << std::endl;
+}
+
+template<class res_T, size_t SIZE1, size_t SIZE2>
+void print_result_array(hls::stream<res_T> result[SIZE2], std::ostream &out, bool keep = false) {
+    for(int j = 0; j < SIZE1/SIZE2; j++) {
+        for(int i = 0; i < SIZE2; i++) {
+            res_T res_pack = result[i].read();
+            out << res_pack << " ";
+            if (keep) result[i].write(res_pack);
+        }
+    }
+    out << std::endl;
+}
+
+template<class res_T, size_t SIZE1, size_t SIZE2>
+void print_result_switch(hls::stream<res_T> result[SIZE2], std::ostream &out, bool keep = false) {
+    if(SIZE2==1){
+        print_result_single<res_T, SIZE1, SIZE2>(result, out, keep);
+    }else {
+        print_result_array<res_T, SIZE1, SIZE2>(result, out, keep);
+    }
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template<class data_T, size_t SIZE>
 void fill_zero(data_T data[SIZE]) {
@@ -415,6 +479,37 @@ void fill_zero_ss(hls::stream<data_T> &data) {
         data.write(data_zero);
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//for switch
+template<class data_T, size_t SIZE1, size_t SIZE2>
+void fill_zero_single(hls::stream<data_T> data[1]) {
+
+    data_T data_zero=0;
+    for(int i = 0; i < SIZE1 ; i++) {
+        data[0].write(data_zero);
+    }
+}
+template<class data_T, size_t SIZE1, size_t SIZE2>
+void fill_zero_array(hls::stream<data_T> data[SIZE2]) {
+
+    data_T data_zero=0;
+    for(int i = 0; i < SIZE1/SIZE2 ; i++) {
+        for(int j = 0; j < SIZE2 ; j++) {
+            data[j].write(data_zero);
+        }
+    }
+}
+template<class data_T, size_t SIZE1, size_t SIZE2>
+void fill_zero_switch(hls::stream<data_T> data[SIZE2]) {
+    if(SIZE2==1){
+        fill_zero_single<data_T, SIZE1, SIZE2>(data);
+    }else {
+        fill_zero_array<data_T, SIZE1, SIZE2>(data);
+    }
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 template <class dataType, unsigned int nrows>
 int read_file_1D(const char * filename, dataType data[nrows])
@@ -467,6 +562,60 @@ void change_type(hls::stream<in_T> &in, hls::stream<out_T> &out)
     hls::stream<out_T> input_trunc;
     for (int ii=0; ii<N_IN; ii++) {
         out << (out_T) in.read();
+    }
+}
+
+template<class srcType, class dstType, size_t SIZE1, size_t SIZE2>
+void convert_data_single(srcType *src, hls::stream<dstType> dst[1]) {    
+    for (size_t i = 0; i < SIZE1; i++) {
+        dstType ctype = dstType(src[i]);
+        dst[0].write(ctype);
+    }
+}
+
+template<class srcType, class dstType, size_t SIZE1, size_t SIZE2>
+void convert_data_array(srcType *src, hls::stream<dstType> dst[SIZE2]) {    
+    for (size_t i = 0; i < SIZE1 / SIZE2; i++) {
+        for (size_t j = 0; j < SIZE2; j++) {
+            dstType ctype = dstType(src[i*SIZE2 + j]);
+            dst[j].write(ctype);
+        }
+    }
+}
+
+template<class srcType, class dstType, size_t SIZE1, size_t SIZE2>
+void convert_data_switch(srcType *src, hls::stream<dstType> dst[SIZE2]) {    
+    if(SIZE2==1){
+        convert_data_single <srcType, dstType, SIZE1, SIZE2>(src, dst);
+    }else {
+        convert_data_array <srcType, dstType, SIZE1, SIZE2>(src, dst);
+    }
+}
+
+template<class srcType, class dstType, size_t SIZE1, size_t SIZE2>
+void convert_data_single(hls::stream<srcType> src[1], dstType *dst) {    
+    for (size_t i = 0; i < SIZE1; i++) {
+        srcType ctype = src[0].read();
+        dst[i] = dstType(ctype);
+    }
+}
+
+template<class srcType, class dstType, size_t SIZE1, size_t SIZE2>
+void convert_data_array(hls::stream<srcType> src[SIZE2], dstType *dst) {    
+    for (size_t i = 0; i < SIZE1 / SIZE2; i++) {
+        for (size_t j = 0; j < SIZE2; j++) {
+            srcType ctype = src[j].read();
+            dst[i*SIZE2 + j] = dstType(ctype);
+        }
+    }
+}
+
+template<class srcType, class dstType, size_t SIZE1, size_t SIZE2>
+void convert_data_switch(hls::stream<srcType> src[SIZE2], dstType *dst) {    
+    if(SIZE2==1){
+        convert_data_single <srcType, dstType, SIZE1, SIZE2>(src, dst);
+    }else {
+        convert_data_array <srcType, dstType, SIZE1, SIZE2>(src, dst);
     }
 }
 

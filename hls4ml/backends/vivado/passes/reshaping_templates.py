@@ -15,6 +15,7 @@ zeropad1d_config_template = """struct config{index} : nnet::padding1d_config {{
 zeropad2d_config_template = """struct config{index} : nnet::padding2d_config {{
     static const unsigned in_height = {in_height};
     static const unsigned in_width = {in_width};
+    static const unsigned data_transfer_out = {data_transfer_out};
     static const unsigned n_chan = {n_chan};
     static const unsigned out_height = {out_height};
     static const unsigned out_width = {out_width};
@@ -25,7 +26,7 @@ zeropad2d_config_template = """struct config{index} : nnet::padding2d_config {{
 }};\n"""
 
 zeropad1d_function_template = 'nnet::zeropad1d_{data_format}<{input_t}, {output_t}, {config}>({input}, {output});'
-zeropad2d_function_template = 'nnet::zeropad2d_{data_format}_ss<{input_t}, {output_t}, {config}>({input}, {output});'
+zeropad2d_function_template = 'nnet::zeropad2d_{data_format}_switch<{input_t}, {output_t}, {config}>({input}, {output});'
 
 padding_include_list = ['nnet_utils/nnet_padding.h', 'nnet_utils/nnet_padding_stream.h']
 
@@ -61,12 +62,13 @@ class ZeroPaddingFunctionTemplate(FunctionCallTemplate):
 resize_config_template = """struct config{index} : nnet::resize_config {{
     static const unsigned height = {in_height};
     static const unsigned width = {in_width};
+    static const unsigned data_transfer_out = {data_transfer_out};
     static const unsigned n_chan = {n_chan};
     static const unsigned new_height = {out_height};
     static const unsigned new_width = {out_width};
 }};\n"""
 
-resize_function_template = 'nnet::resize_{algorithm}_ss<{input_t}, {config}>({input}, {output});'
+resize_function_template = 'nnet::resize_{algorithm}_switch<{input_t}, {config}>({input}, {output});'
 
 resize_include_list = ['nnet_utils/nnet_image.h', 'nnet_utils/nnet_image_stream.h']
 

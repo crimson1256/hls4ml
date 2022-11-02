@@ -97,6 +97,22 @@ class InsertZeroPaddingBeforeConv2D(OptimizerPass):
         # Insert new ZeroPadding2D node above Conv2D
         padding_layer = model.make_node('ZeroPadding2D', 'zp2d_' + node.name, attrs, node.inputs.copy())
         padding_layer.get_output_variable().type.precision = node.get_input_variable().type.precision
+        
+        # -----------------------------------------------------------------------------------------------
+        # 2022 9 23
+        # for array single conversion
+        inp = padding_layer.get_input_variable()
+        shape = inp.shape
+        n_chan = shape[-1]
+        
+        # Set the data_transfer_out attribute for each layer
+        # n_chan < 64 -> array, data_transfer_out remains
+        # n_chan >= 64 -> single, data_transfer_out=1
+        
+        data_transfer_out = 1 if n_chan >= 64 else n_chan        
+        padding_layer.set_attr('data_transfer_out', data_transfer_out)
+        # -----------------------------------------------------------------------------------------------
+        
         model.insert_node(padding_layer, before=node)
 
         return True

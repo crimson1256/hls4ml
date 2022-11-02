@@ -254,9 +254,9 @@ class QuartusStructMemberVariableConverter(StructMemberVariableConverter):
 class VivadoStreamVariableDefinition(VariableDefinition):
     def definition_cpp(self, name_suffix='', as_reference=False):
         if as_reference: # Function parameter
-            return 'hls::stream<{type}> &{name}{suffix}'.format(type=self.type.name, name=self.name, suffix=name_suffix)
+            return 'hls::stream<{type}> {name}{suffix}'.format(type=self.type.name, name=self.name, suffix=name_suffix)
         else: # Declaration
-            return 'hls::stream<{type}> {name}{suffix}("{name}")'.format(type=self.type.name, name=self.name, suffix=name_suffix)
+            return 'hls::stream<{type}> {name}{suffix}'.format(type=self.type.name, name=self.name, suffix=name_suffix)
 
 class QuartusStreamVariableDefinition(VariableDefinition):
     def definition_cpp(self, name_suffix='', as_reference=False):

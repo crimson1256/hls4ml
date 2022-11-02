@@ -1,6 +1,6 @@
 
 from hls4ml.backends.backend import get_backend
-from hls4ml.model.layers import Activation, BatchNormalization, Dense, Embedding, PReLU, ParametrizedActivation, Softmax
+from hls4ml.model.layers import Activation, BatchNormalization, Dense, DenseBatchnorm, Embedding, PReLU, ParametrizedActivation, Softmax
 from hls4ml.backends.template import LayerConfigTemplate, FunctionCallTemplate
 
 # Dense templates
@@ -28,7 +28,7 @@ dense_include_list = ['nnet_utils/nnet_dense.h', 'nnet_utils/nnet_dense_compress
 
 class DenseConfigTemplate(LayerConfigTemplate):
     def __init__(self):
-        super().__init__(Dense)
+        super().__init__((Dense, DenseBatchnorm))
         self.template = dense_config_template
     
     def format(self, node):
@@ -36,12 +36,14 @@ class DenseConfigTemplate(LayerConfigTemplate):
         params['nzeros'] = node.get_weights('weight').nzeros
         params['nonzeros'] = node.get_weights('weight').nonzeros
         params['product_type'] = get_backend('vivado').product_type(node.get_input_variable().type.precision, node.get_weights('weight').type.precision)
-
+        params['n_in'] = node.get_input_variable().size_cpp()
+        import pprint
+        print(node)
         return self.template.format(**params)
 
 class DenseFunctionTemplate(FunctionCallTemplate):
     def __init__(self):
-        super().__init__(Dense, include_header=dense_include_list)
+        super().__init__((Dense, DenseBatchnorm), include_header=dense_include_list)
         self.template = dense_function_template
     
     def format(self, node):
@@ -56,6 +58,7 @@ class DenseFunctionTemplate(FunctionCallTemplate):
 
 batchnorm_config_template = """struct config{index} : nnet::batchnorm_config {{
     static const unsigned n_in = {n_in};
+    static const unsigned data_transfer_out = {data_transfer_out};
     static const unsigned n_filt = {n_filt};
     static const unsigned n_scale_bias = (n_filt == -1) ? n_in : n_filt;
     static const unsigned io_type = nnet::{iotype};
@@ -67,7 +70,7 @@ batchnorm_config_template = """struct config{index} : nnet::batchnorm_config {{
     using product = nnet::product::{product_type}<x_T, y_T>;
 }};\n"""
 
-batchnorm_function_template = 'nnet::normalize_ss<{input_t}, {output_t}, {config}>({input}, {output}, {scale}, {bias});'
+batchnorm_function_template = 'nnet::normalize_switch<{input_t}, {output_t}, {config}>({input}, {output}, {scale}, {bias});'
 
 batchnorm_include_list = ['nnet_utils/nnet_batchnorm.h', 'nnet_utils/nnet_batchnorm_stream.h']
 
@@ -100,6 +103,8 @@ class BatchNormalizationFunctionTemplate(FunctionCallTemplate):
 
 activ_config_template = """struct {type}_config{index} : nnet::activ_config {{
     static const unsigned n_in = {n_in};
+    static const unsigned data_transfer_out = {data_transfer_out};
+    static const unsigned n_chan = {n_chan};
     static const unsigned table_size = {table_size};
     static const unsigned io_type = nnet::{iotype};
     static const unsigned reuse_factor = {reuse};
@@ -117,8 +122,8 @@ softmax_config_template = """struct {type}_config{index} : nnet::activ_config {{
     typedef {inv_table_t.name} inv_table_t;
 }};\n"""
 
-activ_function_template = 'nnet::{activation}_ss<{input_t}, {output_t}, {config}>({input}, {output});'
-param_activ_function_template = 'nnet::{activation}_ss<{input_t}, {output_t}, {config}>({input}, {param}, {output});'
+activ_function_template = 'nnet::{activation}_switch<{input_t}, {output_t}, {config}>({input}, {output});'
+param_activ_function_template = 'nnet::{activation}_switch<{input_t}, {output_t}, {config}>({input}, {param}, {output});'
 
 activ_include_list = ['nnet_utils/nnet_activation.h', 'nnet_utils/nnet_activation_stream.h']
 

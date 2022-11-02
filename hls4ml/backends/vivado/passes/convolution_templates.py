@@ -92,6 +92,8 @@ conv2d_config_template = """struct config{index} : nnet::conv2d_config {{
     static const unsigned pad_right = {pad_right};
     static const unsigned in_height = {in_height};
     static const unsigned in_width = {in_width};
+    static const unsigned data_transfer_in = {data_transfer_in};
+    static const unsigned data_transfer_out = {data_transfer_out};
     static const unsigned n_chan = {n_chan};
     static const unsigned filt_height = {filt_height};
     static const unsigned filt_width = {filt_width};
@@ -116,7 +118,7 @@ conv2d_config_template = """struct config{index} : nnet::conv2d_config {{
 }};
 const ap_uint<config{index}::filt_height * config{index}::filt_width> config{index}::pixels[] = {{{instructions}}};\n"""
 
-conv2d_function_template = 'nnet::conv_2d_{data_format}_ss<{input_t}, {output_t}, {config}>({input}, {output}, {w}, {b});'
+conv2d_function_template = 'nnet::conv_2d_{data_format}_switch<{input_t}, {output_t}, {config}>({input}, {output}, {w}, {b});'
 depthconv2d_function_template = 'nnet::depthwise_conv_2d_{data_format}<{input_t}, {output_t}, {config}>({input}, {output}, {w}, {b});'
 
 conv2d_include_list = ['nnet_utils/nnet_conv2d.h', 'nnet_utils/nnet_conv2d_stream.h']
